@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<title>preservesPitch</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<div id="log"></div>
+<script>
+  test(function() {
+    const a = document.createElement("audio");
+    assert_equals(a.preservesPitch, true);
+  }, "preservesPitch default value exists and set to true");
+
+  test(function() {
+    const a = document.createElement("audio");
+    a.preservesPitch = false;
+    assert_equals(a.preservesPitch, false);
+  }, "###preservesPitch can be set to false");
+
+  async_test(async function(t) {
+    // create audioworklet
+    // create mediaelement, set it to loop
+    // start playback
+    // observe zero crossings inside processor
+
+    try {
+      const src = "sine-wave_1000Hz_-3dBFS-loop.wav";
+      const targetFreq = 1000
+      const tolerance = 0.05 // 5% tolerance
+
+      const a = document.createElement("audio");
+      a.src = src;
+      a.loop = true;
+      a.preservesPitch = false;
+      a.playbackRate = 0.75
+
+      const audioContext = new AudioContext();
+
+      await audioContext.suspend();
+      await audioContext.resume();
+
+      // Location of the worklet's code
+      const filePath = "zero-crossing-detector.js";
+      console.log(audioContext);
+      await audioContext.audioWorklet.addModule(filePath);
+
+      let worklet = new AudioWorkletNode(
+        audioContext,
+        "zero-crossing-detector"
+      );
+      worklet.connect(audioContext.destination);
+
+      const measn = audioContext.createMediaElementSource(a);
+      measn.connect(worklet);
+      console.log("what is this", a);
+      await a.play();
+      worklet.port.onmessage = async e => {
+        console.log("main thread received", e.data);
+        await a.pause();
+        assert_approx_equals(e.data, targetFreq, targetFreq*tolerance,'frequency' );
+        t.done()
+      };
+
+      worklet.port.postMessage({
+        type: "measure-frequency"
+      });
+    } catch (e) {
+      console.log("error??", e);
+      t.done();
+    }
+  }, "____playbackRate predictably affects pitch when preservesPitch = false");
+</script>
